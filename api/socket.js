@@ -41,7 +41,24 @@ export default function handler(req, res) {
     if (!global.waitingUsers) global.waitingUsers = [];
 
     io.on('connection', (socket) => {
-      console.log('Client connected:', socket.id);
+      console.log('[SERVER] New client connected', {
+        id: socket.id,
+        transport: socket.conn.transport.name,
+        headers: socket.handshake.headers['user-agent']
+      });
+
+      socket.conn.on('upgrade', () => {
+        console.log('[SERVER] Transport upgraded', socket.id, 'to', socket.conn.transport.name);
+      });
+
+      socket.on('error', (err) => {
+        console.error('[SERVER] Socket error', socket.id, err);
+      });
+
+      socket.onAny((event, ...args) => {
+        if (['ping', 'pong'].includes(event)) return;
+        console.log(`[SERVER] Event "${event}" from ${socket.id}`, args[0]);
+      });
       
       // Send immediate connection confirmation
       socket.emit('connection-confirmed', { id: socket.id, timestamp: Date.now() });
