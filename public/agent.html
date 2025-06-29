@@ -1423,13 +1423,15 @@
     <script>
         const socket = io({
             path: '/api/socket',
-            transports: ['polling', 'websocket'],
-            timeout: 20000,
+            transports: ['polling'],
+            timeout: 60000,
             forceNew: true,
             reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionAttempts: 5,
-            maxReconnectionAttempts: 5
+            reconnectionDelay: 2000,
+            reconnectionDelayMax: 5000,
+            reconnectionAttempts: 3,
+            randomizationFactor: 0.5,
+            upgrade: false
         });
         const chat = document.getElementById('chat');
         const input = document.getElementById('input');

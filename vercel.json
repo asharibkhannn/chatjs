@@ -3,7 +3,7 @@
   "functions": {
     "api/socket.js": {
       "runtime": "@vercel/node@3.0.7",
-      "maxDuration": 30
+      "maxDuration": 60
     }
   },
   "routes": [
