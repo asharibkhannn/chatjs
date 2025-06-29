@@ -1,8 +1,9 @@
 {
   "version": 2,
   "functions": {
-    "api/*.js": {
-      "runtime": "@vercel/node@3.0.7"
+    "api/socket.js": {
+      "runtime": "@vercel/node@3.0.7",
+      "maxDuration": 30
     }
   },
   "routes": [

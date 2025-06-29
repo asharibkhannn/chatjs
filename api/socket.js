@@ -1,158 +1,150 @@
-const { Server } = require('socket.io');
+import { Server } from 'socket.io';
 
-// Maintain a queue of waiting users
-let waitingUsers = [];
+let io;
 
-const SocketHandler = (req, res) => {
-  if (res.socket.server.io) {
-    console.log('Socket is already running');
-  } else {
-    console.log('Socket is initializing');
-    const io = new Server(res.socket.server, {
+export default function handler(req, res) {
+  if (!res.socket.server.io) {
+    console.log('Initializing Socket.IO server...');
+    
+    io = new Server(res.socket.server, {
       path: '/api/socket',
       addTrailingSlash: false,
       cors: {
         origin: "*",
-        methods: ["GET", "POST"]
-      }
+        methods: ["GET", "POST"],
+        credentials: true
+      },
+      allowEIO3: true,
+      transports: ['polling', 'websocket']
     });
+
     res.socket.server.io = io;
 
+    // Store connected users and agents
+    const users = new Map();
+    const agents = new Map();
+    const waitingUsers = [];
+
     io.on('connection', (socket) => {
-      console.log('New client connected');
+      console.log('Client connected:', socket.id);
 
       socket.on('role', (role) => {
-        socket.data.role = role;
-
+        socket.role = role;
+        
         if (role === 'user') {
-          // Show menu to user
-          socket.emit('bot-message', `Choose:\n1. View Services\n2. Contact Support\n3. Chat with Agent\n4. Exit`);
-        }
-
-        if (role === 'agent') {
-          // Check if user is waiting
+          users.set(socket.id, socket);
+          socket.emit('bot-message', `👋 Hello! Choose an option:\n1. View Services\n2. Contact Support\n3. Chat with Agent\n4. Exit`);
+        } else if (role === 'agent') {
+          agents.set(socket.id, socket);
+          
+          // Check for waiting users
           if (waitingUsers.length > 0) {
             const userSocket = waitingUsers.shift();
-            const roomId = `room-${userSocket.id}-${socket.id}`;
-
-            userSocket.join(roomId);
-            socket.join(roomId);
-
-            userSocket.data.roomId = roomId;
-            socket.data.roomId = roomId;
-
-            userSocket.emit('bot-message', 'You are now connected to a live agent.');
-            socket.emit('bot-message', 'You are now chatting with a user.');
+            if (userSocket && userSocket.connected) {
+              connectUserToAgent(userSocket, socket);
+            }
           } else {
-            socket.emit('bot-message', 'Waiting for a user to request chat...');
+            socket.emit('bot-message', '👩‍💼 Agent dashboard ready. Waiting for customers...');
           }
         }
       });
 
       socket.on('user-message', (msg) => {
-        const role = socket.data.role;
-
-        if (role === 'user') {
-          if (socket.data.roomId) {
-            // User is already in a chat room with an agent
-            socket.to(socket.data.roomId).emit('chat-message', `User: ${msg}`);
+        if (socket.role === 'user') {
+          if (socket.partnerId) {
+            // Forward to connected agent
+            const partner = agents.get(socket.partnerId);
+            if (partner && partner.connected) {
+              partner.emit('chat-message', `Customer: ${msg}`);
+            }
           } else if (msg.trim() === '3') {
-            // User requested escalation
-            waitingUsers.push(socket);
-            socket.emit('bot-message', 'Connecting you to a live agent...');
+            // Request agent connection
+            socket.emit('bot-message', '🔄 Connecting you to an agent...');
             
-            // Check if any agents are available
-            const availableAgents = Array.from(io.sockets.sockets.values())
-              .filter(s => s.data.role === 'agent' && !s.data.roomId);
+            // Find available agent
+            const availableAgent = Array.from(agents.values()).find(agent => !agent.partnerId);
             
-            if (availableAgents.length > 0) {
-              const agentSocket = availableAgents[0];
-              const roomId = `room-${socket.id}-${agentSocket.id}`;
-
-              socket.join(roomId);
-              agentSocket.join(roomId);
-
-              socket.data.roomId = roomId;
-              agentSocket.data.roomId = roomId;
-
-              // Remove user from waiting queue
-              const userIndex = waitingUsers.indexOf(socket);
-              if (userIndex > -1) {
-                waitingUsers.splice(userIndex, 1);
-              }
-
-              socket.emit('bot-message', 'You are now connected to a live agent.');
-              agentSocket.emit('bot-message', 'You are now chatting with a user.');
+            if (availableAgent) {
+              connectUserToAgent(socket, availableAgent);
+            } else {
+              waitingUsers.push(socket);
+              socket.emit('bot-message', '⏳ All agents are busy. You are in queue...');
             }
           } else {
-            // Bot handles other menu options
-            let reply = '';
-            switch (msg.trim()) {
-              case '1':
-                reply = 'Services: Web Dev, SEO, AI Bots.';
-                break;
-              case '2':
-                reply = 'Contact: support@example.com';
-                break;
-              case '4':
-                reply = 'Thanks! Goodbye!';
-                break;
-              default:
-                reply = `Choose:\n1. View Services\n2. Contact Support\n3. Chat with Agent\n4. Exit`;
-            }
-            socket.emit('bot-message', reply);
+            // Handle bot responses
+            handleBotMessage(socket, msg.trim());
+          }
+        }
+      });
+
+      socket.on('chat-message', (msg) => {
+        if (socket.role === 'agent' && socket.partnerId) {
+          const partner = users.get(socket.partnerId);
+          if (partner && partner.connected) {
+            partner.emit('chat-message', `Agent: ${msg}`);
           }
         }
       });
 
       socket.on('user-file', (fileData) => {
-        console.log('User file received:', fileData.name, fileData.size);
-        
-        if (socket.data.roomId) {
-          // User is in a chat room with an agent, forward the file
-          socket.to(socket.data.roomId).emit('agent-file', fileData);
-          socket.emit('file-received'); // Confirm receipt
-        } else {
-          // User not connected to agent, handle as needed
-          socket.emit('bot-message', 'File received. Please connect to an agent to share files.');
-        }
-      });
-
-      socket.on('agent-file', (fileData) => {
-        console.log('Agent file received:', fileData.name, fileData.size);
-        
-        if (socket.data.roomId) {
-          // Agent is in a chat room with a user, forward the file
-          socket.to(socket.data.roomId).emit('user-file', fileData);
-          socket.emit('file-received'); // Confirm receipt
-        }
-      });
-
-      socket.on('chat-message', (msg) => {
-        if (socket.data.roomId) {
-          const role = socket.data.role;
-          const prefix = role === 'agent' ? 'Agent: ' : 'User: ';
-          socket.to(socket.data.roomId).emit('chat-message', prefix + msg);
+        if (socket.partnerId) {
+          const partner = socket.role === 'user' ? agents.get(socket.partnerId) : users.get(socket.partnerId);
+          if (partner && partner.connected) {
+            partner.emit('user-file', fileData);
+          }
         }
       });
 
       socket.on('disconnect', () => {
-        console.log('Client disconnected');
+        console.log('Client disconnected:', socket.id);
         
-        // Remove from waiting queue if present
-        const waitingIndex = waitingUsers.indexOf(socket);
+        // Remove from collections
+        users.delete(socket.id);
+        agents.delete(socket.id);
+        
+        // Remove from waiting queue
+        const waitingIndex = waitingUsers.findIndex(s => s.id === socket.id);
         if (waitingIndex > -1) {
           waitingUsers.splice(waitingIndex, 1);
         }
         
-        // If in a room, notify the other party
-        if (socket.data.roomId) {
-          socket.to(socket.data.roomId).emit('bot-message', 'The other party has disconnected.');
+        // Notify partner if connected
+        if (socket.partnerId) {
+          const partner = socket.role === 'user' ? agents.get(socket.partnerId) : users.get(socket.partnerId);
+          if (partner && partner.connected) {
+            partner.emit('bot-message', '❌ The other party has disconnected.');
+            partner.partnerId = null;
+          }
         }
       });
     });
-  }
-  res.end();
-};
 
-export default SocketHandler; 
+    function connectUserToAgent(userSocket, agentSocket) {
+      userSocket.partnerId = agentSocket.id;
+      agentSocket.partnerId = userSocket.id;
+      
+      userSocket.emit('bot-message', '✅ Connected to a live agent! You can now chat.');
+      agentSocket.emit('bot-message', '👤 Customer connected. You can now assist them.');
+    }
+
+    function handleBotMessage(socket, msg) {
+      let reply = '';
+      switch (msg) {
+        case '1':
+          reply = '🛠️ Our Services:\n• Web Development\n• SEO Optimization\n• AI Chatbots\n• Digital Marketing';
+          break;
+        case '2':
+          reply = '📧 Contact Information:\n• Email: support@example.com\n• Phone: +1-234-567-8900\n• Hours: 9 AM - 5 PM EST';
+          break;
+        case '4':
+          reply = '👋 Thank you for visiting! Have a great day!';
+          break;
+        default:
+          reply = '❓ Please choose a valid option:\n1. View Services\n2. Contact Support\n3. Chat with Agent\n4. Exit';
+      }
+      socket.emit('bot-message', reply);
+    }
+  }
+  
+  res.end();
+} 
