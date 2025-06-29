@@ -1,0 +1,14 @@
+{
+  "name": "chatjs",
+  "version": "1.0.0",
+  "description": "Chat application with bot and agent support",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.2"
+  }
+}
