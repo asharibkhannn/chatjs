@@ -1,0 +1,32 @@
+{
+  "version": 2,
+  "functions": {
+    "api/socket.js": {
+      "runtime": "nodejs18.x"
+    }
+  },
+  "builds": [
+    {
+      "src": "api/socket.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/socket.io/(.*)",
+      "dest": "/api/socket"
+    },
+    {
+      "src": "/agent",
+      "dest": "/agent.html"
+    },
+    {
+      "src": "/user",
+      "dest": "/user.html"
+    },
+    {
+      "src": "/",
+      "dest": "/user.html"
+    }
+  ]
+} 
