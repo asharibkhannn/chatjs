@@ -1482,8 +1482,6 @@
             }
         }
 
-        socket.emit('role', 'agent');
-
         function send() {
             const text = input.value.trim();
             if (!text && !pendingFile || !isConnectedToUser) return;
@@ -1710,10 +1708,13 @@
         });
 
         socket.on('connect', () => {
+            console.log('Agent socket connected');
             status.innerHTML = '<div class="status-indicator" style="background: #10b981;"></div><span>Connected - Ready to help</span>';
+            socket.emit('role', 'agent');
         });
 
         socket.on('disconnect', () => {
+            console.log('Agent socket disconnected (first handler)');
             status.innerHTML = '<div class="status-indicator" style="background: #ef4444;"></div><span>Disconnected</span>';
             disableChat();
         });
@@ -2037,10 +2038,13 @@
         }
 
         socket.on('connect', () => {
+            console.log('Agent socket connected (second handler)');
             status.innerHTML = '<i class="fas fa-circle" style="color: #10b981; font-size: 8px;"></i> <span>Connected - Ready to help</span>';
+            socket.emit('role', 'agent');
         });
 
         socket.on('disconnect', () => {
+            console.log('Agent socket disconnected (second handler)');
             status.innerHTML = '<i class="fas fa-circle" style="color: #ef4444; font-size: 8px;"></i> <span>Disconnected</span>';
             disableChat();
         });
