@@ -5,12 +5,6 @@
       "runtime": "nodejs18.x"
     }
   },
-  "builds": [
-    {
-      "src": "api/socket.js",
-      "use": "@vercel/node"
-    }
-  ],
   "routes": [
     {
       "src": "/socket.io/(.*)",
